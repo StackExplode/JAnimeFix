@@ -31,5 +31,6 @@ if __name__ == "__main__":
 	else:
 		interpolator = WrapperBase(gconfig, {})
 	
+	print(f"开始进行视频处理，使用设备：{gconfig.get('device', 'cpu')}...")
 	worker = Worker(gconfig, upscaler, interpolator)
 	worker.process_video(args.input, args.output)
