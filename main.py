@@ -19,7 +19,7 @@ if __name__ == "__main__":
 	if upscaler_name != "none":
 		with open(f"config/{upscaler_name}.json", "r") as f:
 			uconfig = json.load(f)
-		upscaler = Utils.CreateInstance(f"Wrapper_{upscaler_name}", gconfig, uconfig)
+		upscaler = Utils.CreateInstance(f"wrapper.Wrapper_{upscaler_name}", gconfig, uconfig)
 	else:
 		upscaler = WrapperBase(gconfig, {})
 	
@@ -27,7 +27,7 @@ if __name__ == "__main__":
 	if vfi_name != "none":
 		with open(f"config/{vfi_name}.json", "r") as f:
 			vconfig = json.load(f)
-		interpolator = Utils.CreateInstance(f"Wrapper_{vfi_name}", gconfig, vconfig)
+		interpolator = Utils.CreateInstance(f"wrapper.Wrapper_{vfi_name}", gconfig, vconfig)
 	else:
 		interpolator = WrapperBase(gconfig, {})
 	
