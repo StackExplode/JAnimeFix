@@ -85,7 +85,7 @@ class Worker:
 			'-i', '-',
 			'-c:v', self.ffmpeg_encoder,
 			'-preset', self.ffmpeg_preset,
-			'-cq' if self.ffmpeg_encoder.endswith("nvenc") else "-crf", self.ffmpeg_crf,
+			'-cq' if self.ffmpeg_encoder.endswith("nvenc") else "-crf", str(self.ffmpeg_crf),
 			'-pix_fmt', self.ffmpeg_pixfmt,
 		]
 		
