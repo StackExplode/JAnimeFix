@@ -48,7 +48,7 @@ class AnimeSRWrapper:
 		model = model.half()
 		print("正在对模型核心计算图进行 JIT 编译 (这需要一些时间)...")
 		if hasattr(torch, 'compile'):
-			model.cell = torch.compile(model.cell, mode="reduce-overhead")
+			model.cell = torch.compile(model.cell)
 			return model
 		
 	
