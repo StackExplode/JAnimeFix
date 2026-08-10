@@ -13,8 +13,8 @@ from animesr_wrapper import AnimeSRWrapper
 # ==========================================
 DEVICENUM = 1  # 指定使用的显卡编号
 DEVICE = f"cuda:{DEVICENUM}"
-ANIMESR_MODEL_PATH = "models/animesr.pth"
-RIFE_MODEL_PATH = "models/rife.pth"
+ANIMESR_MODEL_PATH = "models/AnimeSR_v2.pth"
+RIFE_MODEL_PATH = "models/rife2.13.pkl"
 
 UPSCALING_FACTOR = 2
 INTERPOLATION_FACTOR = 2
