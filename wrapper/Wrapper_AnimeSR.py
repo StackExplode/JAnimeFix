@@ -1,6 +1,5 @@
 import os
 import sys
-from typing import override
 
 import torchvision.transforms.functional as TF
 sys.modules['torchvision.transforms.functional_tensor'] = TF
