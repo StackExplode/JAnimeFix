@@ -1,3 +1,7 @@
+import sys
+import torchvision.transforms.functional as TF
+sys.modules['torchvision.transforms.functional_tensor'] = TF
+
 import cv2
 import torch
 import numpy as np
