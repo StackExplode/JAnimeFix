@@ -19,7 +19,7 @@ WINDOW_SIZE = 12  # 滑动窗口大小 (每次存入内存的原视频帧数，�
 BATCH_SIZE = 4  # 模型推理时的并行 Batch Size
 
 # FFmpeg 编码参数配置
-FFMPEG_VCODEC = "libx265"  # 视频编码器 (如 libx264, libx265, h264_nvenc)
+FFMPEG_VCODEC = "hevc_nvenc"  # 视频编码器 (如 libx264, libx265, h264_nvenc, hevc_nvenc)
 FFMPEG_PRESET = "slow"  # 编码速度与压缩率预设 (如 fast, medium, slow)
 FFMPEG_CRF = "18"  # 恒定质量因子 (18-23视觉无损，数值越小质量越高，体积越大)
 
