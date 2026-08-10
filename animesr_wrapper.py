@@ -81,43 +81,38 @@ class AnimeSRWrapper:
 		return img
 	
 	@torch.no_grad()
-	def process_sequence(self, frames_bgr):
+	def process_sequence_tensor(self, frames_bgr):
 		"""
-		处理传入的连续帧序列，保留隐藏状态实现时序稳定性。
+		[修改版] 处理连续帧序列，直接返回保留在 GPU 显存中的 Tensor 列表。
+		彻底消除 PCIe 内存搬运损耗。
 		"""
 		num_imgs = len(frames_bgr)
 		if num_imgs == 0:
 			return []
 		
-		out_frames = []
+		out_tensors = []
 		
-		# 1. 准备序列的首帧状态
+		# 1. 准备首帧
 		prev = self._img_to_tensor(frames_bgr[0])
 		cur = prev
 		nxt_idx = min(1, num_imgs - 1)
 		nxt = self._img_to_tensor(frames_bgr[nxt_idx])
 		
-		# 2. 初始化隐藏状态 (state 和 out)
 		c, h, w = prev.size()[-3:]
 		state = prev.new_zeros(1, 64, h, w)
 		out_state = prev.new_zeros(1, c, h * self.netscale, w * self.netscale)
 		
-		# 3. 循环推进推理
+		# 2. 循环推进推理
 		for idx in range(num_imgs):
-			# 将 prev, cur, nxt 拼接后送入 cell
 			cat_tensor = torch.cat((prev, cur, nxt), dim=1)
 			out_state, state = self.model.cell(cat_tensor, out_state, state)
 			
-			# 提取输出图像
-			out_img = self._tensor_to_img(out_state.clone())
-			out_frames.append(out_img)
+			# 【关键修改】不再调用 self._tensor_to_img，直接克隆并保留在显存中
+			out_tensors.append(out_state.clone())
 			
-			# 状态滚动
 			prev = cur
 			cur = nxt
-			
-			# 读取下一帧（超出边界则重复最后一帧）
 			next_read_idx = min(idx + 2, num_imgs - 1)
 			nxt = self._img_to_tensor(frames_bgr[next_read_idx])
 		
-		return out_frames
+		return out_tensors  # 返回的是 GPU Tensors 列表
