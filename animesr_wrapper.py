@@ -18,11 +18,12 @@ from animesr.utils.inference_base import get_base_argument_parser, get_inference
 
 
 class AnimeSRWrapper:
-	def __init__(self, model_path, device='cuda', outscale=4):
+	def __init__(self, model_path, device='cuda', outscale=4,netscale=4,ishalf = True):
 		self.device = torch.device(device)
-		self.netscale = 4
+		self.netscale = netscale
 		self.outscale = outscale
 		self.mod_scale = 4  # AnimeSR 结构要求的裁剪倍数
+		self.ishalf = ishalf
 		
 		print(f"正在加载 AnimeSR 模型至 {self.device}...")
 		self.model = self._load_model(model_path)
@@ -45,7 +46,8 @@ class AnimeSRWrapper:
 		
 		# 4. 调用官方逻辑初始化模型并挂载到指定设备
 		model = get_inference_model(args, self.device)
-		model = model.half()
+		if(self.ishalf):
+			model = model.half()
 		print("正在对模型核心计算图进行 JIT 编译 (这需要一些时间)...")
 		if hasattr(torch, 'compile'):
 			model.cell = torch.compile(model.cell)
@@ -71,7 +73,7 @@ class AnimeSRWrapper:
 		tensor = torch.from_numpy(np.ascontiguousarray(np.transpose(img, (2, 0, 1)))).float()
 		
 		# 增加 Batch 维度并搬运到显卡
-		return tensor.unsqueeze(0).to(self.device).half()
+		return tensor.unsqueeze(0).to(self.device).half() if self.ishalf else tensor.unsqueeze(0).to(self.device)
 	
 	def _tensor_to_img(self, tensor):
 		"""

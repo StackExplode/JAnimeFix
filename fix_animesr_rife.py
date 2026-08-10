@@ -19,10 +19,10 @@ RIFE_MODEL_PATH = "models/rife2.13.pkl"
 UPSCALING_FACTOR = 2
 INTERPOLATION_FACTOR = 2
 OUTPUT_SHORT_EDGE = 1080
-WINDOW_SIZE = 12
-BATCH_SIZE = 16
+WINDOW_SIZE = 24
+BATCH_SIZE = 32
 
-FFMPEG_VCODEC = "h264_nvenc"  # 已改为硬件编码
+FFMPEG_VCODEC = "hevc_nvenc"  # 已改为硬件编码
 FFMPEG_PRESET = "p4"  # NVENC 的 preset (p1-p7, p4 为平衡)
 FFMPEG_CRF = "18"  # NVENC 中用 -cq 代替 -crf 控制质量
 

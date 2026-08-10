@@ -17,6 +17,12 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         default='AnimeSR_v2',
         help='Model names: AnimeSR_v2 | AnimeSR_v1-PaperModel. Default:AnimeSR_v2')
     parser.add_argument(
+        '-m',
+        '--model_path',
+        type=str,
+        default='AnimeSR_v2.pth',
+        help='Model path')
+    parser.add_argument(
         '-s',
         '--outscale',
         type=int,
