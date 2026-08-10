@@ -13,7 +13,7 @@ import cv2
 import torch
 import numpy as np
 import argparse
-from WrapperBase import WrapperBase
+from .WrapperBase import WrapperBase
 
 # 导入官方提供的工具函数
 from animesr.utils.inference_base import get_base_argument_parser, get_inference_model
