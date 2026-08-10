@@ -7,7 +7,8 @@ from tqdm import tqdm
 # ==========================================
 # 用户可调参数配置区 (Global Configuration)
 # ==========================================
-DEVICE = "cuda:1"  # 推理设备 ('cuda' 或 'cpu')
+DEVICENUM = 1  # 指定使用的 GPU 编号 (0, 1, 2, ...)
+DEVICE = f"cuda:{DEVICENUM}"  # 推理设备 ('cuda' 或 'cpu')
 ANIMESR_MODEL_PATH = "models/AnimeSR_v2.pth"  # AnimeSR 模型路径
 RIFE_MODEL_PATH = "models/rife2.13.pkl"  # RIFE 模型路径
 
@@ -140,6 +141,7 @@ def process_video(input_path, output_path):
 		'-preset', FFMPEG_PRESET,
 		'-crf', FFMPEG_CRF,
 		'-pix_fmt', 'yuv420p',  # 转换回常规播放器兼容的色彩空间
+		'-gpu', str(DEVICENUM),  # 指定 GPU 编号 (仅对 NVENC 有效)
 		output_path
 	]
 	
