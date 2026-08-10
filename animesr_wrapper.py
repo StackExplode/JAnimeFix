@@ -4,7 +4,7 @@ import torchvision.transforms.functional as TF
 sys.modules['torchvision.transforms.functional_tensor'] = TF
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-ANIMESR_REPO_DIR = os.path.join(CURRENT_DIR, 'AnimeSR')
+ANIMESR_REPO_DIR = os.path.join(CURRENT_DIR, 'driver/AnimeSR')
 if ANIMESR_REPO_DIR not in sys.path:
     sys.path.insert(0, ANIMESR_REPO_DIR)
 
