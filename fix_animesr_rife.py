@@ -18,11 +18,11 @@ INTERPOLATION_FACTOR = 2  # 插帧倍率 (2, 3, 或 4)
 OUTPUT_SHORT_EDGE = 1080  # 最终输出视频的短边分辨率
 
 WINDOW_SIZE = 12  # 滑动窗口大小 (每次存入内存的原视频帧数，包含重叠帧)
-BATCH_SIZE = 4  # 模型推理时的并行 Batch Size
+BATCH_SIZE = 16  # 模型推理时的并行 Batch Size
 
 # FFmpeg 编码参数配置
-FFMPEG_VCODEC = "hevc_nvenc"  # 视频编码器 (如 libx264, libx265, h264_nvenc, hevc_nvenc)
-FFMPEG_PRESET = "slow"  # 编码速度与压缩率预设 (如 fast, medium, slow)
+FFMPEG_VCODEC = "h264_nvenc"  # 视频编码器 (如 libx264, libx265, h264_nvenc, hevc_nvenc)
+FFMPEG_PRESET = "fast"  # 编码速度与压缩率预设 (如 fast, medium, slow)
 FFMPEG_CRF = "18"  # 恒定质量因子 (18-23视觉无损，数值越小质量越高，体积越大)
 
 
@@ -136,7 +136,7 @@ def process_video(input_path, output_path):
 		'-i', '-',  # 从 stdin 接收数据
 		'-c:v', FFMPEG_VCODEC,
 		'-preset', FFMPEG_PRESET,
-		'-crf', FFMPEG_CRF,
+		'-cq', FFMPEG_CRF,
 		'-pix_fmt', 'yuv420p',  # 转换回常规播放器兼容的色彩空间
 		'-gpu', str(DEVICENUM),  # 指定 GPU 编号 (仅对 NVENC 有效)
 		output_path
