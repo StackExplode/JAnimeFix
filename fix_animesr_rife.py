@@ -36,6 +36,27 @@ def load_models():
 	return animesr, rife
 
 
+def rife_placeholder(tensor_list, factor):
+	"""
+	正确的 RIFE 占位符函数 (处理 GPU Tensor)。
+	通过复制帧来补齐数量，确保输出总帧数与 FFmpeg 设置的 fps 完美匹配。
+	"""
+	if not tensor_list:
+		return []
+	
+	interp_tensors = []
+	# 两两遍历，中间补齐
+	for i in range(len(tensor_list) - 1):
+		interp_tensors.append(tensor_list[i])
+		# 根据插帧倍率复制原帧来占位（如 2 倍插帧则复制 1 次，补充满中间的空隙）
+		for _ in range(factor - 1):
+			interp_tensors.append(tensor_list[i])
+	
+	# 永远加上序列的最后一帧闭合
+	interp_tensors.append(tensor_list[-1])
+	
+	return interp_tensors
+
 # --- 线程 1：读取线程 ---
 def video_reader_thread(cap, read_queue):
 	while True:
@@ -125,32 +146,37 @@ def process_video(input_path, output_path):
 				# 1. AnimeSR 放大 (返回 GPU Tensors)
 				sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
 				
-				# 2. RIFE 插帧 (占位，暂时直接返回 sr_tensors 模拟，实际开发时传入 sr_tensors 即可)
-				# interp_tensors = rife_model.process_tensor_batch(sr_tensors)
-				interp_tensors = sr_tensors
+				# 2. RIFE 占位插帧 (真实增加帧数，对齐输出 fps)
+				interp_tensors = rife_placeholder(sr_tensors, INTERPOLATION_FACTOR)
 				
 				# 3. 截断最后的重复帧
+				# 原本窗口内要输出的帧数为：len(window_buffer) - 1
+				# 插帧后，这部分对应的实际帧数需要乘以插帧倍率
 				frames_to_write = len(window_buffer) - 1
-				# 这里的 INTERPOLATION_FACTOR 暂时设为 1，因为上面 RIFE 占位还没真正插帧倍增
-				frames_to_write_after_interp = frames_to_write * 1
+				frames_to_write_after_interp = frames_to_write * INTERPOLATION_FACTOR
 				
-				# 4. 显存下放回内存，并送入写入队列
+				# 4. 截断后下放到 CPU 并送入写入队列
 				final_bytes = tensors_to_bytes(interp_tensors[:frames_to_write_after_interp], OUTPUT_SHORT_EDGE)
 				for b in final_bytes:
 					write_queue.put(b)
 				
 				window_buffer = [window_buffer[-1]]
 		
-		# 处理收尾帧
+		# 处理视频末尾剩余的收尾帧
 		if len(window_buffer) > 1:
 			sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
-			final_bytes = tensors_to_bytes(sr_tensors, OUTPUT_SHORT_EDGE)
+			# 同样需要经过占位插帧扩充数量
+			interp_tensors = rife_placeholder(sr_tensors, INTERPOLATION_FACTOR)
+			final_bytes = tensors_to_bytes(interp_tensors, OUTPUT_SHORT_EDGE)
 			for b in final_bytes:
 				write_queue.put(b)
+		
 		elif len(window_buffer) == 1:
+			# 只剩孤立的一帧，只能放大，无法进行“两两之间”的插帧
 			sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
 			final_bytes = tensors_to_bytes([sr_tensors[0]], OUTPUT_SHORT_EDGE)
 			write_queue.put(final_bytes[0])
+			
 	except KeyboardInterrupt:
 		print("\n[警告] 检测到手动中断 (Ctrl+C)！正在安全保存已处理的视频片段，请勿再次强制退出...")
 	
