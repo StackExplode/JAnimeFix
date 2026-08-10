@@ -45,7 +45,7 @@ class AnimeSRWrapper:
 		
 		# 4. 调用官方逻辑初始化模型并挂载到指定设备
 		model = get_inference_model(args, self.device)
-		return model
+		return model.half()
 	
 	def _img_to_tensor(self, img):
 		"""
@@ -66,7 +66,7 @@ class AnimeSRWrapper:
 		tensor = torch.from_numpy(np.ascontiguousarray(np.transpose(img, (2, 0, 1)))).float()
 		
 		# 增加 Batch 维度并搬运到显卡
-		return tensor.unsqueeze(0).to(self.device)
+		return tensor.unsqueeze(0).to(self.device).half()
 	
 	def _tensor_to_img(self, tensor):
 		"""
