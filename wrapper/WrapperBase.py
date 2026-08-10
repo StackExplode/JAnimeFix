@@ -16,4 +16,4 @@ class WrapperBase:
 		pass
 	
 	def Process(self, anydata):
-		pass
+		return anydata
