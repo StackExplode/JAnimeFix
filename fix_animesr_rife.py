@@ -31,7 +31,7 @@ FFMPEG_CRF = "18"  # NVENC 中用 -cq 代替 -crf 控制质量
 
 def load_models():
 	print("正在加载模型环境...")
-	animesr = AnimeSRWrapper(model_path=ANIMESR_MODEL_PATH, device=DEVICE, netscale=UPSCALING_FACTOR)
+	animesr = AnimeSRWrapper(model_path=ANIMESR_MODEL_PATH, device=DEVICE, outscale=UPSCALING_FACTOR)
 	rife = None  # 等待后续 RIFE 封装
 	return animesr, rife
 
