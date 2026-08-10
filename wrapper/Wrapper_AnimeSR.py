@@ -22,9 +22,9 @@ from animesr.utils.inference_base import get_base_argument_parser, get_inference
 class WrapperAnimeSR(WrapperBase):
 	def __init__(self, globaljson, json):
 		super().__init__(globaljson, json)
-		self.device = torch.device(self.GetGlobalSetting("device", "cuda"))
+		self.device = torch.device(self.GetGlobalSetting("device", "cuda:0"))
 		self.netscale = self.GetSetting("netscale", 4)
-		self.outscale = self.GetGlobalSetting("upscale_rate", 4)
+		self.outscale = self.GetGlobalSetting("upscale_factor", 4)
 		self.ishalf = self.GetSetting("ishalf", True)
 		self.mod_scale = self.GetSetting("mod_scale", 4)
 		self.modelpath = self.GetSetting("model_path", "models/AnimeSR_v2.pth")
@@ -35,6 +35,7 @@ class WrapperAnimeSR(WrapperBase):
 		"""
 				使用官方提供的 get_inference_model 来加载模型。
 				"""
+		print("正在加载 AnimeSR 模型...")
 		# 1. 获取官方的默认参数解析器
 		parser = get_base_argument_parser()
 		
@@ -53,7 +54,8 @@ class WrapperAnimeSR(WrapperBase):
 		print("正在对模型核心计算图进行 JIT 编译 (这需要一些时间)...")
 		if hasattr(torch, 'compile') and self.isprecompile:
 			model.cell = torch.compile(model.cell)
-		return model
+		
+		self.model = model
 	
 	def _img_to_tensor(self, img):
 		"""

@@ -1,0 +1,15 @@
+{
+  "device": "cuda:1",
+  "upscaler" : "AnimeSR",
+  "interpolator" : "none",
+  "frame_window_size" : 12,
+  "batch_size" : 4,
+  "upscale_factor" : 2,
+  "output_short_edge" : 1080,
+  "interpolation_factor" : 3,
+  "ffmpeg_encoder" : "hevc_nvenc",
+  "ffmpeg_preset" : "slow",
+  "ffmpeg_crf" : 18,
+  "ffmpeg_pixfmt" : "yuv420p",
+  "ffmpeg_extra": ""
+}
