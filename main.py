@@ -2,7 +2,7 @@ import argparse
 import json
 
 from utils import Utils
-from wrapper import WrapperBase
+from wrapper.WrapperBase import WrapperBase
 from worker import Worker
 
 if __name__ == "__main__":
