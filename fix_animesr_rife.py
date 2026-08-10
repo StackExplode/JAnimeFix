@@ -3,6 +3,7 @@ import subprocess
 import cv2
 import numpy as np
 from tqdm import tqdm
+from animesr_wrapper import AnimeSRWrapper
 
 # ==========================================
 # 用户可调参数配置区 (Global Configuration)
@@ -32,27 +33,23 @@ def load_models():
 	[占位函数] 初始化并加载模型到指定 DEVICE。
 	"""
 	print(f"正在将模型加载至 {DEVICE}...")
-	animesr = None  # 替换为实际的模型实例
+	animesr = AnimeSRWrapper(
+		model_path=ANIMESR_MODEL_PATH,
+		device=DEVICE,
+		outscale=UPSCALING_FACTOR
+	)
 	rife = None  # 替换为实际的模型实例
 	return animesr, rife
 
 
 def run_animesr_batch(model, frames, batch_size):
 	"""
-	[占位函数] 对传入的图像列表进行批量 AnimeSR 放大。
-	需根据 batch_size 将 frames 切片送入显存。
+	直接调用包装器处理整个窗口序列。
+	由于 AnimeSR 是基于 RNN 的时序模型，它内部自带了序列循环，
+	因此无需手动按照 batch_size 切片，直接将整个 window 的帧列表传入即可。
 	"""
-	# 伪代码逻辑：
-	# upscaled_frames = []
-	# for i in range(0, len(frames), batch_size):
-	#     batch = frames[i : i+batch_size]
-	#     tensor = numpy_to_tensor(batch)
-	#     out_tensor = model(tensor)
-	#     upscaled_frames.extend(tensor_to_numpy(out_tensor))
-	
-	# 这里直接模拟输出，将原图放大返回
-	upscaled = [cv2.resize(f, (f.shape[1] * UPSCALING_FACTOR, f.shape[0] * UPSCALING_FACTOR)) for f in frames]
-	return upscaled
+	upscaled_frames = model.process_sequence(frames)
+	return upscaled_frames
 
 
 def run_rife_batch(model, frames, factor, batch_size):

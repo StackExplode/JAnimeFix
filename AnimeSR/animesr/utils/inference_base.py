@@ -47,7 +47,7 @@ def get_inference_model(args, device) -> MSRSWVSR:
     # set up model
     model = MSRSWVSR(num_feat=64, num_block=[5, 3, 2], netscale=args.netscale)
 
-    model_path = f'weights/{args.model_name}.pth'
+    model_path = args.model_path
     assert os.path.isfile(model_path), \
         f'{model_path} does not exist, please make sure you successfully download the pretrained models ' \
         f'and put them into the weights folder'
