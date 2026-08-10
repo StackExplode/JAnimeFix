@@ -111,56 +111,59 @@ def process_video(input_path, output_path):
 	
 	window_buffer = []
 	pbar = tqdm(total=total_frames, desc="处理进度", unit="帧")
-	
-	# 主线程专心做 GPU 推断
-	while True:
-		frame = read_queue.get()
-		if frame is None:  # 读完了
-			break
+	try:
+		# 主线程专心做 GPU 推断
+		while True:
+			frame = read_queue.get()
+			if frame is None:  # 读完了
+				break
+			
+			window_buffer.append(frame)
+			pbar.update(1)
+			
+			if len(window_buffer) == WINDOW_SIZE:
+				# 1. AnimeSR 放大 (返回 GPU Tensors)
+				sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
+				
+				# 2. RIFE 插帧 (占位，暂时直接返回 sr_tensors 模拟，实际开发时传入 sr_tensors 即可)
+				# interp_tensors = rife_model.process_tensor_batch(sr_tensors)
+				interp_tensors = sr_tensors
+				
+				# 3. 截断最后的重复帧
+				frames_to_write = len(window_buffer) - 1
+				# 这里的 INTERPOLATION_FACTOR 暂时设为 1，因为上面 RIFE 占位还没真正插帧倍增
+				frames_to_write_after_interp = frames_to_write * 1
+				
+				# 4. 显存下放回内存，并送入写入队列
+				final_bytes = tensors_to_bytes(interp_tensors[:frames_to_write_after_interp], OUTPUT_SHORT_EDGE)
+				for b in final_bytes:
+					write_queue.put(b)
+				
+				window_buffer = [window_buffer[-1]]
 		
-		window_buffer.append(frame)
-		pbar.update(1)
-		
-		if len(window_buffer) == WINDOW_SIZE:
-			# 1. AnimeSR 放大 (返回 GPU Tensors)
+		# 处理收尾帧
+		if len(window_buffer) > 1:
 			sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
-			
-			# 2. RIFE 插帧 (占位，暂时直接返回 sr_tensors 模拟，实际开发时传入 sr_tensors 即可)
-			# interp_tensors = rife_model.process_tensor_batch(sr_tensors)
-			interp_tensors = sr_tensors
-			
-			# 3. 截断最后的重复帧
-			frames_to_write = len(window_buffer) - 1
-			# 这里的 INTERPOLATION_FACTOR 暂时设为 1，因为上面 RIFE 占位还没真正插帧倍增
-			frames_to_write_after_interp = frames_to_write * 1
-			
-			# 4. 显存下放回内存，并送入写入队列
-			final_bytes = tensors_to_bytes(interp_tensors[:frames_to_write_after_interp], OUTPUT_SHORT_EDGE)
+			final_bytes = tensors_to_bytes(sr_tensors, OUTPUT_SHORT_EDGE)
 			for b in final_bytes:
 				write_queue.put(b)
-			
-			window_buffer = [window_buffer[-1]]
+		elif len(window_buffer) == 1:
+			sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
+			final_bytes = tensors_to_bytes([sr_tensors[0]], OUTPUT_SHORT_EDGE)
+			write_queue.put(final_bytes[0])
+	except KeyboardInterrupt:
+		print("\n[警告] 检测到手动中断 (Ctrl+C)！正在安全保存已处理的视频片段，请勿再次强制退出...")
 	
-	# 处理收尾帧
-	if len(window_buffer) > 1:
-		sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
-		final_bytes = tensors_to_bytes(sr_tensors, OUTPUT_SHORT_EDGE)
-		for b in final_bytes:
-			write_queue.put(b)
-	elif len(window_buffer) == 1:
-		sr_tensors = animesr_model.process_sequence_tensor(window_buffer)
-		final_bytes = tensors_to_bytes([sr_tensors[0]], OUTPUT_SHORT_EDGE)
-		write_queue.put(final_bytes[0])
-	
-	write_queue.put(None)  # 通知写入线程结束
-	writer_t.join()  # 等待最后的视频编码完成
-	cap.release()
-	pbar.close()
-	
-	print("正在等待 FFmpeg 封装视频...")
-	process.stdin.close()
-	process.wait()
-	print("处理完成！视频已保存至:", output_path)
+	finally:
+		write_queue.put(None)  # 通知写入线程结束
+		writer_t.join()  # 等待最后的视频编码完成
+		cap.release()
+		pbar.close()
+		
+		print("正在等待 FFmpeg 封装视频...")
+		process.stdin.close()
+		process.wait()
+		print("处理完成！视频已保存至:", output_path)
 
 
 if __name__ == "__main__":
