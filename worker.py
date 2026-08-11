@@ -6,6 +6,7 @@ import subprocess
 import threading
 from tqdm import tqdm
 from typing_extensions import deprecated
+import shlex
 
 class Worker:
 	def __init__(self,config,upscaler,interpolator):
@@ -81,7 +82,7 @@ class Worker:
 				ffmpeg_cmd.extend(['-gpu', str(dev_num)])
 			
 			if len(self.ffmpeg_extra) > 0:
-				ffmpeg_cmd.append(self.ffmpeg_extra)
+				ffmpeg_cmd.extend(shlex.split(self.ffmpeg_extra))
 			
 			ffmpeg_cmd.append(output_path)
 		else:
@@ -196,6 +197,7 @@ class Worker:
 			
 	def ProcessUpscale(self, input_path, output_path, isfinal):
 		upscaler = self.upscaler
+		upscaler.CorrectSetting()
 		upscaler.LoadModel()
 		
 		cap = cv2.VideoCapture(input_path)
