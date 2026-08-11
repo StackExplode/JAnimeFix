@@ -13,9 +13,9 @@ class Worker:
 		self.config = config
 		self.upscaler = upscaler
 		self.interpolator = interpolator
-		self.upscale_factor = config.get("upscale_factor", 4)
-		self.interpolation_factor = config.get("interpolation_factor", 2)
+		self.output_resize = config.get("output_resize", "none")
 		self.output_short_edge = config.get("output_short_edge", 1080)
+		self.output_fps = config.get("output_fps", 30)
 		self.ffmpeg_encoder = config.get("ffmpeg_encoder", "h264_nvenc")
 		self.ffmpeg_preset = config.get("ffmpeg_preset", "slow")
 		self.ffmpeg_crf = config.get("ffmpeg_crf", "18")
@@ -44,7 +44,7 @@ class Worker:
 			process.stdin.write(frame_bytes)
 	
 	# --- 显卡到内存的转换 (放到最后一步) ---
-	def tensors_to_bytes(self, tensor_list, short_edge):
+	def tensors_to_bytes(self, tensor_list):
 		"""把 GPU 里的高清张量转成可以送给 FFmpeg 的字节流"""
 		out_bytes = []
 		for tensor in tensor_list:
@@ -53,19 +53,29 @@ class Worker:
 			img = tensor.numpy()
 			img = np.transpose(img[[2, 1, 0], :, :], (1, 2, 0))
 			img = (img * 255.0).round().astype(np.uint8)
-			
-			# 缩放
-			h, w = img.shape[:2]
-			if h < w:
-				new_h, new_w = short_edge, int(w * (short_edge / h))
-			else:
-				new_w, new_h = short_edge, int(h * (short_edge / w))
-			
-			img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
 			out_bytes.append(img.tobytes())
+			
 		return out_bytes
 	
-	def _get_ffmpeg_param(self,isfinal,output_path,w,h,fps):
+	def _get_ffmpeg_out_param(self, stage): #stage: 1=upscale, 2=interpolate
+		if self.output_resize != "none":
+			resizestr = f"scale='if(gt(iw,ih),-2,{self.output_short_edge})':'if(gt(iw,ih),{self.output_short_edge},-2)':flags={self.output_resize}"
+		else:
+			resizestr = ""
+		if self.output_resize != 0:
+			fpsstr = f"fps={self.output_fps}"
+		else:
+			fpsstr = ""
+
+		if stage == 1:
+			return f"-vf \"{resizestr}\"" if resizestr != "" else ""
+		elif stage == 2:
+			return f"-vf \"{fpsstr}\"" if fpsstr != "" else ""
+			
+			
+		
+	
+	def _get_ffmpeg_param(self,stage,isfinal,output_path,w,h,fps):
 		if isfinal:
 			ffmpeg_cmd = [
 				'ffmpeg', '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
@@ -81,6 +91,10 @@ class Worker:
 				dev_num = int(self.device.split(":")[1]) if ":" in self.device else 0
 				ffmpeg_cmd.extend(['-gpu', str(dev_num)])
 			
+			ext=self._get_ffmpeg_out_param(stage)
+			if ext != "":
+				ffmpeg_cmd.extend(shlex.split(ext))
+			
 			if len(self.ffmpeg_extra) > 0:
 				ffmpeg_cmd.extend(shlex.split(self.ffmpeg_extra))
 			
@@ -90,16 +104,25 @@ class Worker:
 				'ffmpeg', '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
 				'-s', f'{w}x{h}', '-pix_fmt', 'bgr24', '-r', str(fps),
 				'-i', '-',
-				'-c:v', self.ffmpeg_encoder,
+				'-c:v', "hevc_nvenc",
 				'-preset', "p6",
 				'-spatial-aq', '1',
 				'-rc', 'vbr_hq',
-				'-cq' if self.ffmpeg_encoder.endswith("nvenc") else "-crf", "17",
+				'-cq' , "17",
 				'-pix_fmt', "yuv420p10le",
+				'-spatial-aq', '1',
+				'-temporal-aq', '1',
+				'-rc-lookahead', '32',
 			]
+			
 			if self.device.startswith("cuda"):
 				dev_num = int(self.device.split(":")[1]) if ":" in self.device else 0
 				ffmpeg_cmd.extend(['-gpu', str(dev_num)])
+			
+			ext = self._get_ffmpeg_out_param(stage)
+			if ext != "":
+				ffmpeg_cmd.extend(shlex.split(ext))
+			
 			ffmpeg_cmd.append(output_path)
 		return ffmpeg_cmd
 	
@@ -109,20 +132,17 @@ class Worker:
 			
 	def ProcessUpscale(self, input_path, output_path, isfinal):
 		upscaler = self.upscaler
-		upscaler.CorrectSetting()
 		upscaler.LoadModel()
 		
 		cap = cv2.VideoCapture(input_path)
-		out_fps = cap.get(cv2.CAP_PROP_FPS)
+		org_fps = cap.get(cv2.CAP_PROP_FPS)
 		total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 		orig_w, orig_h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 		
-		temp_h, temp_w = orig_h * self.upscale_factor, orig_w * self.upscale_factor
-		out_h = self.output_short_edge if temp_h < temp_w else int(temp_h * (self.output_short_edge / temp_w))
-		out_w = int(temp_w * (self.output_short_edge / temp_h)) if temp_h < temp_w else self.output_short_edge
-		out_w, out_h = out_w if out_w % 2 == 0 else out_w + 1, out_h if out_h % 2 == 0 else out_h + 1
+
+		up_w, up_h = upscaler.GetSize(orig_w, orig_h)
 		
-		ffmpeg_cmd = self._get_ffmpeg_param(isfinal=isfinal, output_path=output_path, w=out_w, h=out_h, fps=out_fps)
+		ffmpeg_cmd = self._get_ffmpeg_param(stage=1,isfinal=isfinal, output_path=output_path, w=up_w, h=up_h, fps=org_fps)
 		
 		process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 		
@@ -158,8 +178,7 @@ class Worker:
 					#frames_to_write_after_interp = frames_to_write * self.interpolation_factor
 					
 					# 4. 截断后下放到 CPU 并送入写入队列
-					final_bytes = self.tensors_to_bytes(sr_tensors[:frames_to_write],
-					                                    self.output_short_edge)
+					final_bytes = self.tensors_to_bytes(sr_tensors[:frames_to_write])
 					for b in final_bytes:
 						write_queue.put(b)
 					
@@ -169,14 +188,14 @@ class Worker:
 			if len(window_buffer) > 1:
 				sr_tensors = upscaler.Process(window_buffer)
 
-				final_bytes = self.tensors_to_bytes(sr_tensors, self.output_short_edge)
+				final_bytes = self.tensors_to_bytes(sr_tensors, )
 				for b in final_bytes:
 					write_queue.put(b)
 			
 			elif len(window_buffer) == 1:
 				# 只剩孤立的一帧，只能放大，无法进行“两两之间”的插帧
 				sr_tensors = upscaler.Process(window_buffer)
-				final_bytes = self.tensors_to_bytes([sr_tensors[0]], self.output_short_edge)
+				final_bytes = self.tensors_to_bytes([sr_tensors[0]])
 				write_queue.put(final_bytes[0])
 		
 		except KeyboardInterrupt:

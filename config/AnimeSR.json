@@ -2,6 +2,6 @@
   "model_path" : "models/AnimeSR_v2.pth",
   "netscale" : 4,
   "mod_scale" : 4,
-  "ishalf" : true,
+  "ishalf" : true,  //If use 16-bit precision
   "isprecompile" : true
 }

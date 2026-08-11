@@ -8,23 +8,25 @@ sys.modules['torchvision.transforms.functional_tensor'] = TF
 import cv2
 import torch
 import numpy as np
-from WrapperBase import WrapperBase
+from WrapperBase import *
 
 # 导入官方提供的工具函数
-from .inference_base import get_base_argument_parser, get_inference_model
+from .utils.inference_base import get_base_argument_parser, get_inference_model
 
-class Wrapper_AnimeSR(WrapperBase):
+class Wrapper_AnimeSR(UplcalerWrapperBase):
 	def __init__(self, globaljson, json):
 		super().__init__(globaljson, json)
 		self.device = torch.device(self.GetGlobalSetting("device", "cuda:0"))
 		self.netscale = self.GetSetting("netscale", 4)
-		self.outscale = self.GetGlobalSetting("upscale_factor", 4)
 		self.ishalf = self.GetSetting("ishalf", True)
 		self.mod_scale = self.GetSetting("mod_scale", 4)
 		self.modelpath = self.GetSetting("model_path", "models/AnimeSR_v2.pth")
 		self.isprecompile = self.GetSetting("isprecompile", True)
 		self.model = None
-		
+	
+	def GetSize(self,w,h):
+		return w * self.netscale, h * self.netscale
+	
 	def LoadModel(self):
 		"""
 				使用官方提供的 get_inference_model 来加载模型。
@@ -39,7 +41,6 @@ class Wrapper_AnimeSR(WrapperBase):
 		# 3. 覆盖官方解析器中的关键参数，指向我们自定义的路径和倍率
 		args.model_path = self.modelpath
 		args.netscale = self.netscale
-		args.outscale = self.outscale
 		
 		# 4. 调用官方逻辑初始化模型并挂载到指定设备
 		model = get_inference_model(args, self.device)

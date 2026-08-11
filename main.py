@@ -1,8 +1,9 @@
 import argparse
-import json
+import json5 as json
 
 from utils import Utils
 from worker import Worker
+from WrapperBase import *
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
@@ -19,6 +20,8 @@ if __name__ == "__main__":
 		with open(f"config/{upscaler_name}.json", "r") as f:
 			uconfig = json.load(f)
 		upscaler = Utils.CreateInstance(f"driver.{upscaler_name}.Wrapper_{upscaler_name}.Wrapper_{upscaler_name}", gconfig, uconfig)
+	elif upscaler_name == "dummy":
+		upscaler = DummyWrapper(gconfig, {})
 	else:
 		upscaler = None
 	
@@ -27,8 +30,11 @@ if __name__ == "__main__":
 		with open(f"config/{vfi_name}.json", "r") as f:
 			vconfig = json.load(f)
 		interpolator = Utils.CreateInstance(f"driver.{vfi_name}.Wrapper_{vfi_name}.Wrapper_{vfi_name}", gconfig, vconfig)
+	elif vfi_name == "dummy":
+		interpolator = DummyWrapper(gconfig, {})
 	else:
 		interpolator = None
+
 	
 	print(f"开始进行视频处理，使用设备：{gconfig.get('device', 'cpu')}...")
 	worker = Worker(gconfig, upscaler, interpolator)

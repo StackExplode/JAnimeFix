@@ -1,4 +1,3 @@
-import json
 
 #Wrapper Interface
 class WrapperBase:
@@ -6,8 +5,6 @@ class WrapperBase:
 		self.globalsetting = globaljson
 		self.setting = json
 	
-	def CorrectSetting(self):
-		pass
 		
 	def GetSetting(self, key, defaultval = None):
 		return self.setting.get(key, defaultval)
@@ -20,3 +17,33 @@ class WrapperBase:
 	
 	def Process(self, anydata):
 		return anydata
+	
+class UplcalerWrapperBase(WrapperBase):
+	def __init__(self, globaljson, json):
+		super().__init__(globaljson, json)
+	
+	def GetSize(self,w,h):
+		pass
+	
+class InterpolatorWrapperBase(WrapperBase):
+	def __init__(self, globaljson, json):
+		super().__init__(globaljson, json)
+	
+	def GetFPS(self,fps):
+		pass
+
+class DummyWrapper(WrapperBase):
+	def __init__(self, globaljson, json):
+		super().__init__(globaljson, json)
+	
+	def LoadModel(self):
+		pass
+	
+	def Process(self, anydata):
+		return anydata
+	
+	def GetSize(self,w,h):
+		return w,h
+	
+	def GetFPS(self,fps):
+		return fps
