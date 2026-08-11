@@ -170,7 +170,7 @@ class Worker:
 		writer_t.start()
 		
 		window_buffer = []
-		pbar = tqdm(total=total_frames, desc="放大进度", unit="帧")
+		pbar = tqdm(total=total_frames,smoothing=0.1, desc="放大进度", unit="帧")
 		try:
 			# 主线程专心做 GPU 推断
 			while True:
@@ -229,7 +229,7 @@ class Worker:
 	
 	def _progress_listener(self, q, total_frames, desc):
 		"""独立的进度条监听线程，解决多进程下控制台乱码闪烁的问题"""
-		pbar = tqdm(total=total_frames, desc=desc, unit="帧")
+		pbar = tqdm(total=total_frames, desc=desc, unit="帧", smoothing=0.1)
 		for _ in iter(q.get, None):
 			pbar.update(1)
 		pbar.close()
@@ -239,7 +239,8 @@ class Worker:
 		"""
 		统一的多进程切片调度核心。无论是放大还是插帧都复用此通道。
 		"""
-		chunk_num = self.config.get("chunk_num", 4)
+		chunk_num = self.config.get("chunk_num_upscale", 1)
+		print(f"视频将以 {chunk_num} 个切片并行处理，请关注你的显存是否足够...")
 		
 		cap = cv2.VideoCapture(input_path)
 		total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

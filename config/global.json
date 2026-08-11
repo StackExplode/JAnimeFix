@@ -3,7 +3,8 @@
   "upscaler" : "AnimeSR", //Current support: none, AnimeSR
   "interpolator" : "none", //Current support: none, RIFE
   "frame_window_size" : 12,
-  "chunk_num" : 4,  //Parallel processing chunk number, set to 1 if you have low VRAM
+  "chunk_num_upscale" : 4,  //Parallel processing chunk number for upscaling, set to 1 if you have low VRAM
+  "chunk_num_interpolate" : 4,  //Parallel processing chunk number for interpolation, set to 1 if you have low VRAM
   "output_resize" : "lanczos", //Resize method for output, current support: none, lanczos, bilinear, bicubic, spline
   "output_short_edge" : 1080, //Resize short edge to this size
   "output_fps" : 60,  //truncate to this fps after interpolation, set to 0 to disable
