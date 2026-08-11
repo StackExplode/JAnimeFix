@@ -11,6 +11,6 @@
   "ffmpeg_preset" : "slow",
   "ffmpeg_crf" : 20,
   "ffmpeg_pixfmt" : "yuv420p",
-  "ffmpeg_extra": "",
+  "ffmpeg_extra": "-rc vbr_hq",
   "temp_dir" : "/dev/shm/janimefix_temp"
 }

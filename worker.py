@@ -92,6 +92,7 @@ class Worker:
 				'-c:v', self.ffmpeg_encoder,
 				'-preset', "p6",
 				'-spatial-aq', '1',
+				'-rc', 'vbr_hq',
 				'-cq' if self.ffmpeg_encoder.endswith("nvenc") else "-crf", 17,
 				'-pix_fmt', "yuv420p10le",
 			]
