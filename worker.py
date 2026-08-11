@@ -5,6 +5,7 @@ import queue
 import subprocess
 import threading
 from tqdm import tqdm
+from typing_extensions import deprecated
 
 class Worker:
 	def __init__(self,config,upscaler,interpolator):
@@ -21,6 +22,7 @@ class Worker:
 		self.ffmpeg_extra = config.get("ffmpeg_extra", "")
 		self.device = config.get("device", "cuda:0")
 		self.frame_window_size = config.get("frame_window_size", 12)
+		self.temp_dir = config.get("temp_dir", "temp")
 		
 	
 	# --- 线程 1：读取线程 ---
@@ -62,6 +64,44 @@ class Worker:
 			out_bytes.append(img.tobytes())
 		return out_bytes
 	
+	def _get_ffmpeg_param(self,isfinal,output_path,w,h,fps):
+		if isfinal:
+			ffmpeg_cmd = [
+				'ffmpeg', '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
+				'-s', f'{w}x{h}', '-pix_fmt', 'bgr24', '-r', str(fps),
+				'-i', '-',
+				'-c:v', self.ffmpeg_encoder,
+				'-preset', self.ffmpeg_preset,
+				'-cq' if self.ffmpeg_encoder.endswith("nvenc") else "-crf", str(self.ffmpeg_crf),
+				'-pix_fmt', self.ffmpeg_pixfmt,
+			]
+			
+			if self.device.startswith("cuda"):
+				dev_num = int(self.device.split(":")[1]) if ":" in self.device else 0
+				ffmpeg_cmd.extend(['-gpu', str(dev_num)])
+			
+			if len(self.ffmpeg_extra) > 0:
+				ffmpeg_cmd.append(self.ffmpeg_extra)
+			
+			ffmpeg_cmd.append(output_path)
+		else:
+			ffmpeg_cmd = [
+				'ffmpeg', '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
+				'-s', f'{w}x{h}', '-pix_fmt', 'bgr24', '-r', str(fps),
+				'-i', '-',
+				'-c:v', self.ffmpeg_encoder,
+				'-preset', "p6",
+				'-spatial-aq', '1',
+				'-cq' if self.ffmpeg_encoder.endswith("nvenc") else "-crf", 17,
+				'-pix_fmt', "yuv420p10le",
+			]
+			if self.device.startswith("cuda"):
+				dev_num = int(self.device.split(":")[1]) if ":" in self.device else 0
+				ffmpeg_cmd.extend(['-gpu', str(dev_num)])
+			ffmpeg_cmd.append(output_path)
+		return ffmpeg_cmd
+	
+	@deprecated("废弃！")
 	def process_video(self, input_path, output_path):
 		upscaler, interpolator = (self.upscaler, self.interpolator)
 		
@@ -79,24 +119,7 @@ class Worker:
 		out_w = int(temp_w * (self.output_short_edge / temp_h)) if temp_h < temp_w else self.output_short_edge
 		out_w, out_h = out_w if out_w % 2 == 0 else out_w + 1, out_h if out_h % 2 == 0 else out_h + 1
 		
-		ffmpeg_cmd = [
-			'ffmpeg', '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
-			'-s', f'{out_w}x{out_h}', '-pix_fmt', 'bgr24', '-r', str(out_fps),
-			'-i', '-',
-			'-c:v', self.ffmpeg_encoder,
-			'-preset', self.ffmpeg_preset,
-			'-cq' if self.ffmpeg_encoder.endswith("nvenc") else "-crf", str(self.ffmpeg_crf),
-			'-pix_fmt', self.ffmpeg_pixfmt,
-		]
-		
-		if self.device.startswith("cuda"):
-			dev_num = int(self.device.split(":")[1]) if ":" in self.device else 0
-			ffmpeg_cmd.extend(['-gpu', str(dev_num)])
-		
-		if len(self.ffmpeg_extra) > 0:
-			ffmpeg_cmd.append(self.ffmpeg_extra)
-		
-		ffmpeg_cmd.append(output_path)
+		ffmpeg_cmd = self._get_ffmpeg_param(isfinal=True, output_path=output_path, w=out_w, h=out_h, fps=out_fps)
 		
 		process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 		
@@ -169,3 +192,106 @@ class Worker:
 			process.stdin.close()
 			process.wait()
 			print("处理完成！视频已保存至:", output_path)
+			
+	def ProcessUpscale(self, input_path, output_path, isfinal):
+		upscaler = self.upscaler
+		upscaler.LoadModel()
+		
+		cap = cv2.VideoCapture(input_path)
+		out_fps = cap.get(cv2.CAP_PROP_FPS)
+		total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+		orig_w, orig_h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+		
+		temp_h, temp_w = orig_h * self.upscale_factor, orig_w * self.upscale_factor
+		out_h = self.output_short_edge if temp_h < temp_w else int(temp_h * (self.output_short_edge / temp_w))
+		out_w = int(temp_w * (self.output_short_edge / temp_h)) if temp_h < temp_w else self.output_short_edge
+		out_w, out_h = out_w if out_w % 2 == 0 else out_w + 1, out_h if out_h % 2 == 0 else out_h + 1
+		
+		ffmpeg_cmd = self._get_ffmpeg_param(isfinal=isfinal, output_path=output_path, w=out_w, h=out_h, fps=out_fps)
+		
+		process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+		
+		# 建立多线程队列
+		read_queue = queue.Queue(maxsize=30)
+		write_queue = queue.Queue(maxsize=30)
+		
+		# 启动工作线程
+		threading.Thread(target=self.video_reader_thread, args=(cap, read_queue), daemon=True).start()
+		writer_t = threading.Thread(target=self.video_writer_thread, args=(process, write_queue), daemon=True)
+		writer_t.start()
+		
+		window_buffer = []
+		pbar = tqdm(total=total_frames, desc="放大进度", unit="帧")
+		try:
+			# 主线程专心做 GPU 推断
+			while True:
+				frame = read_queue.get()
+				if frame is None:  # 读完了
+					break
+				
+				window_buffer.append(frame)
+				pbar.update(1)
+				
+				if len(window_buffer) == self.frame_window_size:
+					# 1. AnimeSR 放大 (返回 GPU Tensors)
+					sr_tensors = upscaler.Process(window_buffer)
+					
+					# 3. 截断最后的重复帧
+					# 原本窗口内要输出的帧数为：len(window_buffer) - 1
+					# 插帧后，这部分对应的实际帧数需要乘以插帧倍率
+					frames_to_write = len(window_buffer) - 1
+					frames_to_write_after_interp = frames_to_write * self.interpolation_factor
+					
+					# 4. 截断后下放到 CPU 并送入写入队列
+					final_bytes = self.tensors_to_bytes(sr_tensors[:frames_to_write_after_interp],
+					                                    self.output_short_edge)
+					for b in final_bytes:
+						write_queue.put(b)
+					
+					window_buffer = [window_buffer[-1]]
+			
+			# 处理视频末尾剩余的收尾帧
+			if len(window_buffer) > 1:
+				sr_tensors = upscaler.Process(window_buffer)
+
+				final_bytes = self.tensors_to_bytes(sr_tensors, self.output_short_edge)
+				for b in final_bytes:
+					write_queue.put(b)
+			
+			elif len(window_buffer) == 1:
+				# 只剩孤立的一帧，只能放大，无法进行“两两之间”的插帧
+				sr_tensors = upscaler.Process(window_buffer)
+				final_bytes = self.tensors_to_bytes([sr_tensors[0]], self.output_short_edge)
+				write_queue.put(final_bytes[0])
+		
+		except KeyboardInterrupt:
+			print("\n[警告] 检测到手动中断 (Ctrl+C)！正在安全保存已处理的视频片段，请勿再次强制退出...")
+		
+		finally:
+			write_queue.put(None)  # 通知写入线程结束
+			writer_t.join()  # 等待最后的视频编码完成
+			cap.release()
+			pbar.close()
+			
+			print("正在等待 FFmpeg 封装视频...")
+			process.stdin.close()
+			process.wait()
+			tempstr = "" if isfinal else "临时目录"
+			print(f"放大完成！视频已保存至{tempstr}:", output_path)
+	
+	def ProcessInterpolate(self, input_path, output_path):
+		interpolator = self.interpolator
+		interpolator.LoadModel()
+		
+		cap = cv2.VideoCapture(input_path)
+		out_fps = cap.get(cv2.CAP_PROP_FPS) * self.interpolation_factor
+		total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+		out_w, out_h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+		
+		
+		ffmpeg_cmd = self._get_ffmpeg_param(True, output_path=output_path, w=out_w, h=out_h, fps=out_fps)
+		
+		raise NotImplementedError("后面不会写了")
+	
+	def MergeOtherTracks(self, input_path, output_path):
+		pass

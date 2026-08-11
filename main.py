@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 
 from utils import Utils
 from wrapper.WrapperBase import WrapperBase
@@ -21,7 +22,7 @@ if __name__ == "__main__":
 			uconfig = json.load(f)
 		upscaler = Utils.CreateInstance(f"wrapper.Wrapper_{upscaler_name}.Wrapper_{upscaler_name}", gconfig, uconfig)
 	else:
-		upscaler = WrapperBase(gconfig, {})
+		upscaler = None
 	
 	vfi_name = gconfig.get("interpolator", "none")
 	if vfi_name != "none":
@@ -29,8 +30,26 @@ if __name__ == "__main__":
 			vconfig = json.load(f)
 		interpolator = Utils.CreateInstance(f"wrapper.Wrapper_{vfi_name}.Wrapper_{vfi_name}", gconfig, vconfig)
 	else:
-		interpolator = WrapperBase(gconfig, {})
+		interpolator = None
 	
 	print(f"开始进行视频处理，使用设备：{gconfig.get('device', 'cpu')}...")
 	worker = Worker(gconfig, upscaler, interpolator)
-	worker.process_video(args.input, args.output)
+	#worker.process_video(args.input, args.output)
+	Utils.InitTempDir(gconfig)
+	tempdir = gconfig.get("temp_dir")
+	interpo_input = args.input
+	
+	if upscaler is not None:
+		print("开始进行放大处理...")
+		isfinish = interpolator is None
+		outputdir =  args.output if isfinish else tempdir
+		interpo_input = worker.ProcessUpscale(args.input, outputdir, isfinish)
+	if interpolator is not None:
+		print("开始进行插帧处理...")
+		worker.ProcessInterpolate(interpo_input, args.output)
+		
+	print("开始合并其他轨道...")
+	worker.MergeOtherTracks(args.input, args.output)
+	
+	print("清理临时文件...")
+	Utils.CleanupTempFiles()
