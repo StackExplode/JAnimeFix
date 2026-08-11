@@ -1,3 +1,5 @@
+import os
+
 import cv2
 import numpy as np
 import torch
@@ -7,6 +9,9 @@ import threading
 from tqdm import tqdm
 from typing_extensions import deprecated
 import shlex
+
+from utils import Utils
+
 
 class Worker:
 	def __init__(self,config,upscaler,interpolator):
@@ -62,7 +67,7 @@ class Worker:
 			resizestr = f"scale='if(gt(iw,ih),-2,{self.output_short_edge})':'if(gt(iw,ih),{self.output_short_edge},-2)':flags={self.output_resize}"
 		else:
 			resizestr = ""
-		if self.output_resize != 0:
+		if self.output_fps != 0:
 			fpsstr = f"fps={self.output_fps}"
 		else:
 			fpsstr = ""
@@ -138,7 +143,7 @@ class Worker:
 	def process_video(self, input_path, output_path):
 		pass
 			
-	def ProcessUpscale(self, input_path, output_path, isfinal):
+	def ProcessUpscale_old(self, input_path, output_path, isfinal):
 		upscaler = self.upscaler
 		upscaler.LoadModel()
 		
@@ -222,7 +227,209 @@ class Worker:
 			tempstr = "" if isfinal else "临时目录"
 			print(f"放大完成！视频已保存至{tempstr}:", output_path)
 	
-	def ProcessInterpolate(self, input_path, output_path):
+	def _progress_listener(self, q, total_frames, desc):
+		"""独立的进度条监听线程，解决多进程下控制台乱码闪烁的问题"""
+		pbar = tqdm(total=total_frames, desc=desc, unit="帧")
+		for _ in iter(q.get, None):
+			pbar.update(1)
+		pbar.close()
+	
+	def _run_in_chunks(self, stage, input_path, output_path, isfinal, wrapper, out_w, out_h, out_fps, base_name,
+	                   desc="处理进度"):
+		"""
+		统一的多进程切片调度核心。无论是放大还是插帧都复用此通道。
+		"""
+		chunk_num = self.config.get("chunk_num", 4)
+		
+		cap = cv2.VideoCapture(input_path)
+		total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+		cap.release()
+		
+		import math
+		import multiprocessing as mp
+		from utils import Utils
+		
+		frames_per_chunk = math.ceil(total_frames / chunk_num)
+		chunk_args = []
+		temp_chunk_files = []
+		
+		manager = mp.Manager()
+		progress_queue = manager.Queue()
+		
+		# 1. 任务切割与临时文件注册
+		for i in range(chunk_num):
+			start_frame = i * frames_per_chunk
+			end_frame = min((i + 1) * frames_per_chunk, total_frames)
+			if start_frame >= total_frames:
+				break
+			
+			# 以原文件名为基础派生安全切片名
+			chunk_out_path = os.path.join(self.temp_dir, f"{base_name}_{desc}_chunk_{i}.mp4")
+			temp_chunk_files.append(chunk_out_path)
+			
+			# 【生命周期管理】立刻注册零件，交由主程序的 Cleanup 统一销毁
+			Utils.AddTempFile(chunk_out_path)
+			
+			ffmpeg_cmd = self._get_ffmpeg_param(stage, isfinal, chunk_out_path, out_w, out_h, out_fps)
+			
+			chunk_args.append((
+				input_path, start_frame, end_frame,
+				wrapper, ffmpeg_cmd, progress_queue,
+				self.frame_window_size
+			))
+		
+		# 2. 拉起监听器与子进程 (强制使用 spawn 隔离 CUDA)
+		listener_t = threading.Thread(target=self._progress_listener, args=(progress_queue, total_frames, desc))
+		listener_t.start()
+		
+		ctx = mp.get_context('spawn')
+		with ctx.Pool(processes=len(chunk_args)) as pool:
+			pool.starmap(self._chunk_processor, chunk_args)
+		
+		progress_queue.put(None)
+		listener_t.join()
+		
+		# 3. 极速无损合并 (Concat Demuxer)
+		print(f"\n[{desc}] 所有切片处理完毕，正在无损合并视频...")
+		concat_list_path = os.path.join(self.temp_dir, f"{base_name}_{desc}_concat_list.txt")
+		Utils.AddTempFile(concat_list_path)  # 同样注册 txt
+		
+		with open(concat_list_path, "w", encoding="utf-8") as f:
+			for chunk_file in temp_chunk_files:
+				abs_path = os.path.abspath(chunk_file).replace("\\", "/")
+				f.write(f"file '{abs_path}'\n")
+		
+		concat_cmd = [
+			'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+			'-i', concat_list_path, '-c', 'copy', output_path
+		]
+		subprocess.run(concat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+		
+		# 完美贯彻“自动挡清理”，无需任何 os.remove 硬编码
+		return output_path
+	
+	@staticmethod
+	def tensors_to_bytes_static(tensor_list):
+		"""必须升级为静态方法，供隔离的子进程调用"""
+		out_bytes = []
+		for tensor in tensor_list:
+			tensor = tensor.squeeze(0).float().cpu().clamp_(0, 1)
+			img = tensor.numpy()
+			img = np.transpose(img[[2, 1, 0], :, :], (1, 2, 0))
+			img = (img * 255.0).round().astype(np.uint8)
+			out_bytes.append(img.tobytes())
+		return out_bytes
+	
+	@staticmethod
+	def _chunk_processor(input_path, start_frame, end_frame, wrapper, ffmpeg_cmd, progress_queue, window_size):
+		"""
+		子进程内部处理逻辑。包含绝对坐标映射的热身帧精准丢弃算法。
+		"""
+		# 在子进程中实例化模型避免显存冲突
+		wrapper.LoadModel()
+		
+		# 若模型基类中未定义 get_warmup_frames，则默认回退 0 帧
+		warmup_frames = wrapper.get_warmup_frames() if hasattr(wrapper, 'get_warmup_frames') else 0
+		actual_start_read = max(0, start_frame - warmup_frames)
+		
+		cap = cv2.VideoCapture(input_path)
+		cap.set(cv2.CAP_PROP_POS_FRAMES, actual_start_read)
+		
+		process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+		
+		window_buffer = []
+		current_read_idx = actual_start_read
+		
+		while current_read_idx < end_frame:
+			ret, frame = cap.read()
+			if not ret:
+				break
+			
+			window_buffer.append(frame)
+			current_read_idx += 1  # 累加，此时 current_read_idx 代表“下一帧将要读取的索引”
+			
+			if len(window_buffer) == window_size:
+				sr_tensors = wrapper.Process(window_buffer)
+				frames_to_write = len(window_buffer) - 1
+				
+				# 降维处理，转化为 Byte 数组
+				final_bytes = Worker.tensors_to_bytes_static(sr_tensors[:frames_to_write])
+				
+				# 【算法核心】利用当前索引，逆推出当前数组内每一张画面的绝对帧坐标
+				for k, b in enumerate(final_bytes):
+					abs_frame_idx = current_read_idx - len(window_buffer) + k
+					# 如果该画面属于“有效区”（不属于向左探取的热身区），则真正写入
+					if abs_frame_idx >= start_frame:
+						process.stdin.write(b)
+						progress_queue.put(1)
+				
+				# 滑动窗口
+				window_buffer = [window_buffer[-1]]
+		
+		# 收尾处理 (处理那些由于到达 end_frame 而未填满 window_size 的尾巴)
+		if len(window_buffer) > 1:
+			sr_tensors = wrapper.Process(window_buffer)
+			final_bytes = Worker.tensors_to_bytes_static(sr_tensors)
+			for k, b in enumerate(final_bytes):
+				abs_frame_idx = current_read_idx - len(window_buffer) + k
+				if abs_frame_idx >= start_frame:
+					process.stdin.write(b)
+					progress_queue.put(1)
+		
+		elif len(window_buffer) == 1:
+			abs_frame_idx = current_read_idx - 1
+			if abs_frame_idx >= start_frame:
+				sr_tensors = wrapper.Process(window_buffer)
+				final_bytes = Worker.tensors_to_bytes_static([sr_tensors[0]])
+				process.stdin.write(final_bytes[0])
+				progress_queue.put(1)
+		
+		process.stdin.close()
+		process.wait()
+		cap.release()
+		
+	# =====================================================================
+	# 主控业务逻辑 (ProcessUpscale)
+	# =====================================================================
+	
+	def ProcessUpscale(self, input_path, output_dir, isfinal):
+		# 1. 探针：获取视频参数并使用模型自身的倍率计算分辨率
+		import os
+		cap = cv2.VideoCapture(input_path)
+		org_fps = cap.get(cv2.CAP_PROP_FPS)
+		orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+		orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+		cap.release()
+		
+		up_w, up_h = self.upscaler.GetSize(orig_w, orig_h)
+		base_name = os.path.splitext(os.path.basename(input_path))[0]
+		
+		# 2. 组装输出路径
+		if isfinal:
+			target_output = output_dir
+		else:
+			# 【生命周期管理】作为半成品的中间件坚决不调用 AddTempFile()，留给后续插帧环节接盘
+			target_output = os.path.join(output_dir, f"{base_name}_upscaled.mp4")
+		
+		# 3. 将任务丢给公共分块调度引擎
+		result_path = self._run_in_chunks(
+			stage=1,
+			input_path=input_path,
+			output_path=target_output,
+			isfinal=isfinal,
+			wrapper=self.upscaler,
+			out_w=up_w,
+			out_h=up_h,
+			out_fps=org_fps,
+			base_name=base_name,
+			desc="放大"
+		)
+		
+		return result_path
+	
+	def ProcessInterpolate(self, input_path, output_path, isnoupscale):
+		if not isnoupscale:
+			Utils.AddTempFile(input_path)
 		raise NotImplementedError("尚未实现")
 	
 	def MergeOtherTracks(self, input_path, output_path):

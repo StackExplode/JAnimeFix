@@ -15,10 +15,18 @@ class WrapperBase:
 	def LoadModel(self):
 		pass
 	
+	def get_warmup_frames(self) -> int:
+		"""
+		[抽象接口] 获取模型在切片并行时的“热身”帧数。
+		- 纯 CNN 模型 (如 RealESRGAN, RIFE)：返回 0
+		- RNN/时序模型 (如 AnimeSR)：返回 20 (或你的窗口大小)
+		"""
+		return 0
+	
 	def Process(self, anydata):
 		return anydata
 	
-class UplcalerWrapperBase(WrapperBase):
+class UpcalerWrapperBase(WrapperBase):
 	def __init__(self, globaljson, json):
 		super().__init__(globaljson, json)
 	

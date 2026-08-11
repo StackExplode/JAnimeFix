@@ -39,17 +39,20 @@ if __name__ == "__main__":
 	tempdir = gconfig.get("temp_dir")
 	interpo_input = args.input
 	
+try:
 	if upscaler is not None:
 		print("开始进行放大处理...")
-		isfinish = interpolator is None
-		outputdir =  args.output if isfinish else tempdir
-		interpo_input = worker.ProcessUpscale(args.input, outputdir, isfinish)
+		isfinal = interpolator is None
+		outputdir =  args.output if isfinal else tempdir
+		interpo_input = worker.ProcessUpscale(args.input, outputdir, isfinal)
 	if interpolator is not None:
 		print("开始进行插帧处理...")
-		worker.ProcessInterpolate(interpo_input, args.output)
+		worker.ProcessInterpolate(interpo_input, args.output, upscaler is None)
 		
 	print("开始合并其他轨道...")
 	worker.MergeOtherTracks(args.input, args.output)
-	
+except KeyboardInterrupt:
+	print("\n[警告] 用户中断，正在清理临时文件...")
+finally:
 	print("清理临时文件...")
 	Utils.CleanupTempFiles()

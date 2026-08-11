@@ -13,7 +13,7 @@ from WrapperBase import *
 # 导入官方提供的工具函数
 from .inference_base import get_base_argument_parser, get_inference_model
 
-class Wrapper_AnimeSR(UplcalerWrapperBase):
+class Wrapper_AnimeSR(UpcalerWrapperBase):
 	def __init__(self, globaljson, json):
 		super().__init__(globaljson, json)
 		self.device = torch.device(self.GetGlobalSetting("device", "cuda:0"))
@@ -26,6 +26,10 @@ class Wrapper_AnimeSR(UplcalerWrapperBase):
 	
 	def GetSize(self,w,h):
 		return w * self.netscale, h * self.netscale
+	
+	def get_warmup_frames(self) -> int:
+		return 20
+	
 	
 	def LoadModel(self):
 		"""
