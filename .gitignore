@@ -6,3 +6,17 @@ models/*
 !models/.gitkeep
 log.txt
 drive_dev/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
