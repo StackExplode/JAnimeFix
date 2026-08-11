@@ -11,7 +11,7 @@ import numpy as np
 from WrapperBase import *
 
 # 导入官方提供的工具函数
-from .utils.inference_base import get_base_argument_parser, get_inference_model
+from utils.inference_base import get_base_argument_parser, get_inference_model
 
 class Wrapper_AnimeSR(UplcalerWrapperBase):
 	def __init__(self, globaljson, json):
