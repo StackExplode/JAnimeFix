@@ -1,9 +1,7 @@
 import argparse
 import json
-import os
 
 from utils import Utils
-from wrapper.WrapperBase import WrapperBase
 from worker import Worker
 
 if __name__ == "__main__":
@@ -20,7 +18,7 @@ if __name__ == "__main__":
 	if upscaler_name != "none":
 		with open(f"config/{upscaler_name}.json", "r") as f:
 			uconfig = json.load(f)
-		upscaler = Utils.CreateInstance(f"wrapper.Wrapper_{upscaler_name}.Wrapper_{upscaler_name}", gconfig, uconfig)
+		upscaler = Utils.CreateInstance(f"driver.{upscaler_name}.Wrapper_{upscaler_name}.Wrapper_{upscaler_name}", gconfig, uconfig)
 	else:
 		upscaler = None
 	
@@ -28,7 +26,7 @@ if __name__ == "__main__":
 	if vfi_name != "none":
 		with open(f"config/{vfi_name}.json", "r") as f:
 			vconfig = json.load(f)
-		interpolator = Utils.CreateInstance(f"wrapper.Wrapper_{vfi_name}.Wrapper_{vfi_name}", gconfig, vconfig)
+		interpolator = Utils.CreateInstance(f"driver.{vfi_name}.Wrapper_{vfi_name}.Wrapper_{vfi_name}", gconfig, vconfig)
 	else:
 		interpolator = None
 	

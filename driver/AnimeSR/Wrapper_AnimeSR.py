@@ -4,18 +4,14 @@ import sys
 import torchvision.transforms.functional as TF
 sys.modules['torchvision.transforms.functional_tensor'] = TF
 
-ANIMESR_REPO_DIR = os.path.join(os.getcwd(), 'driver/AnimeSR')
-if ANIMESR_REPO_DIR not in sys.path:
-	sys.path.insert(0, ANIMESR_REPO_DIR)
 
 import cv2
 import torch
 import numpy as np
-import argparse
-from .WrapperBase import WrapperBase
+from WrapperBase import WrapperBase
 
 # 导入官方提供的工具函数
-from animesr.utils.inference_base import get_base_argument_parser, get_inference_model
+from .inference_base import get_base_argument_parser, get_inference_model
 
 class Wrapper_AnimeSR(WrapperBase):
 	def __init__(self, globaljson, json):

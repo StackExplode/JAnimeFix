@@ -4,3 +4,5 @@ output/*
 !output/.gitkeep
 models/*
 !models/.gitkeep
+log.txt
+drive_dev/*

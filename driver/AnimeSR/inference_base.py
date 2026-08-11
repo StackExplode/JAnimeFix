@@ -2,7 +2,7 @@ import argparse
 import os.path
 import torch
 
-from animesr.archs.vsr_arch import MSRSWVSR
+from .vsr_arch import MSRSWVSR
 
 
 def get_base_argument_parser() -> argparse.ArgumentParser:
