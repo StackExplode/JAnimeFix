@@ -32,18 +32,3 @@ class InterpolatorWrapperBase(WrapperBase):
 	def GetFPS(self,fps):
 		pass
 
-class DummyWrapper(WrapperBase):
-	def __init__(self, globaljson, json):
-		super().__init__(globaljson, json)
-	
-	def LoadModel(self):
-		print("不使用模型，仅用ffmpeg进行传统缩放和帧率转换。")
-	
-	def Process(self, anydata):
-		return anydata
-	
-	def GetSize(self,w,h):
-		return w,h
-	
-	def GetFPS(self,fps):
-		return fps

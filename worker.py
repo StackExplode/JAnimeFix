@@ -150,8 +150,8 @@ class Worker:
 
 		up_w, up_h = upscaler.GetSize(orig_w, orig_h)
 		
-		stage = 3 if upscaler.GetSetting("name", "") == "dummy" else 1
-		ffmpeg_cmd = self._get_ffmpeg_param(stage=stage,isfinal=isfinal, output_path=output_path, w=up_w, h=up_h, fps=org_fps)
+
+		ffmpeg_cmd = self._get_ffmpeg_param(stage=1,isfinal=isfinal, output_path=output_path, w=up_w, h=up_h, fps=org_fps)
 		
 		process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 		

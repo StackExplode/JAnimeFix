@@ -1,6 +1,6 @@
 {
   "device": "cuda:1", //cpu may be very slow, use cuda if you have a compatible GPU, device can be set to "cuda:0" or "cuda:1" etc. if you have multiple GPUs
-  "upscaler" : "AnimeSR", //Current support: none, dummy, AnimeSR
+  "upscaler" : "AnimeSR", //Current support: none, AnimeSR
   "interpolator" : "none", //Current support: none, RIFE
   "frame_window_size" : 12,
   "chunk_num" : 4,  //Parallel processing chunk number, set to 1 if you have low VRAM
