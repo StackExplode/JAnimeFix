@@ -57,7 +57,7 @@ class Worker:
 			
 		return out_bytes
 	
-	def _get_ffmpeg_out_param(self, stage): #stage: 1=upscale, 2=interpolate
+	def _get_ffmpeg_out_param(self, stage): #stage: 1=upscale, 2=interpolate, 3=special
 		if self.output_resize != "none":
 			resizestr = f"scale='if(gt(iw,ih),-2,{self.output_short_edge})':'if(gt(iw,ih),{self.output_short_edge},-2)':flags={self.output_resize}"
 		else:
@@ -71,7 +71,15 @@ class Worker:
 			return f"-vf \"{resizestr}\"" if resizestr != "" else ""
 		elif stage == 2:
 			return f"-vf \"{fpsstr}\"" if fpsstr != "" else ""
-			
+		elif stage == 3:
+			if resizestr != "" and fpsstr != "":
+				return f"-vf \"{resizestr},{fpsstr}\""
+			elif resizestr != "":
+				return f"-vf \"{resizestr}\""
+			elif fpsstr != "":
+				return f"-vf \"{fpsstr}\""
+			else:
+				return ""
 			
 		
 	
@@ -142,7 +150,8 @@ class Worker:
 
 		up_w, up_h = upscaler.GetSize(orig_w, orig_h)
 		
-		ffmpeg_cmd = self._get_ffmpeg_param(stage=1,isfinal=isfinal, output_path=output_path, w=up_w, h=up_h, fps=org_fps)
+		stage = 3 if upscaler.GetSetting("name", "") == "dummy" else 1
+		ffmpeg_cmd = self._get_ffmpeg_param(stage=stage,isfinal=isfinal, output_path=output_path, w=up_w, h=up_h, fps=org_fps)
 		
 		process = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
 		

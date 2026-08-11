@@ -21,7 +21,7 @@ if __name__ == "__main__":
 			uconfig = json.load(f)
 		upscaler = Utils.CreateInstance(f"driver.{upscaler_name}.Wrapper_{upscaler_name}.Wrapper_{upscaler_name}", gconfig, uconfig)
 	elif upscaler_name == "dummy":
-		upscaler = DummyWrapper(gconfig, {})
+		upscaler = DummyWrapper(gconfig, { "name": "dummy" })
 	else:
 		upscaler = None
 	
@@ -30,8 +30,6 @@ if __name__ == "__main__":
 		with open(f"config/{vfi_name}.json", "r") as f:
 			vconfig = json.load(f)
 		interpolator = Utils.CreateInstance(f"driver.{vfi_name}.Wrapper_{vfi_name}.Wrapper_{vfi_name}", gconfig, vconfig)
-	elif vfi_name == "dummy":
-		interpolator = DummyWrapper(gconfig, {})
 	else:
 		interpolator = None
 
