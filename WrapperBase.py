@@ -37,7 +37,7 @@ class DummyWrapper(WrapperBase):
 		super().__init__(globaljson, json)
 	
 	def LoadModel(self):
-		pass
+		print("不使用模型，仅用ffmpeg进行传统缩放和帧率转换。")
 	
 	def Process(self, anydata):
 		return anydata

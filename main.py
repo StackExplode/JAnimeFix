@@ -16,7 +16,7 @@ if __name__ == "__main__":
 		gconfig = json.load(f)
 	
 	upscaler_name = gconfig.get("upscaler", "none")
-	if upscaler_name != "none":
+	if upscaler_name != "none" and upscaler_name != "dummy":
 		with open(f"config/{upscaler_name}.json", "r") as f:
 			uconfig = json.load(f)
 		upscaler = Utils.CreateInstance(f"driver.{upscaler_name}.Wrapper_{upscaler_name}.Wrapper_{upscaler_name}", gconfig, uconfig)
