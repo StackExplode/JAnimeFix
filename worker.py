@@ -236,17 +236,14 @@ class Worker:
 	
 	def _run_in_chunks(self, stage, input_path, output_path, isfinal, wrapper, out_w, out_h, out_fps, base_name,
 	                   desc="处理进度"):
-		"""
-		统一的多进程切片调度核心。无论是放大还是插帧都复用此通道。
-		"""
-		chunk_num = self.config.get("chunk_num_upscale", 1)
-		print(f"视频将以 {chunk_num} 个切片并行处理，请关注你的显存是否足够...")
+		chunk_num = self.config.get("chunk_num", 4)
 		
 		cap = cv2.VideoCapture(input_path)
 		total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 		cap.release()
 		
 		import math
+		import os
 		import multiprocessing as mp
 		from utils import Utils
 		
@@ -254,46 +251,54 @@ class Worker:
 		chunk_args = []
 		temp_chunk_files = []
 		
-		manager = mp.Manager()
-		progress_queue = manager.Queue()
-		
-		# 1. 任务切割与临时文件注册
-		for i in range(chunk_num):
-			start_frame = i * frames_per_chunk
-			end_frame = min((i + 1) * frames_per_chunk, total_frames)
-			if start_frame >= total_frames:
-				break
-			
-			# 以原文件名为基础派生安全切片名
-			chunk_out_path = os.path.join(self.temp_dir, f"{base_name}_{desc}_chunk_{i}.mp4")
-			temp_chunk_files.append(chunk_out_path)
-			
-			# 【生命周期管理】立刻注册零件，交由主程序的 Cleanup 统一销毁
-			Utils.AddTempFile(chunk_out_path)
-			
-			ffmpeg_cmd = self._get_ffmpeg_param(stage, isfinal, chunk_out_path, out_w, out_h, out_fps)
-			
-			chunk_args.append((
-				input_path, start_frame, end_frame,
-				wrapper, ffmpeg_cmd, progress_queue,
-				self.frame_window_size
-			))
-		
-		# 2. 拉起监听器与子进程 (强制使用 spawn 隔离 CUDA)
-		listener_t = threading.Thread(target=self._progress_listener, args=(progress_queue, total_frames, desc))
-		listener_t.start()
-		
+		# 强制使用 spawn，隔离 CUDA
 		ctx = mp.get_context('spawn')
-		with ctx.Pool(processes=len(chunk_args)) as pool:
-			pool.starmap(self._chunk_processor, chunk_args)
 		
-		progress_queue.put(None)
-		listener_t.join()
+		# 【修复 Bug 2】使用 with 语句托管 Manager，确保其生命周期结束时安全释放 Semaphore
+		with ctx.Manager() as manager:
+			progress_queue = manager.Queue()
+			
+			for i in range(chunk_num):
+				start_frame = i * frames_per_chunk
+				end_frame = min((i + 1) * frames_per_chunk, total_frames)
+				if start_frame >= total_frames:
+					break
+				
+				chunk_out_path = os.path.join(self.temp_dir, f"{base_name}_{desc}_chunk_{i}.mp4")
+				temp_chunk_files.append(chunk_out_path)
+				
+				Utils.AddTempFile(chunk_out_path)
+				
+				ffmpeg_cmd = self._get_ffmpeg_param(stage, isfinal, chunk_out_path, out_w, out_h, out_fps)
+				
+				chunk_args.append((
+					input_path, start_frame, end_frame,
+					wrapper, ffmpeg_cmd, progress_queue,
+					self.frame_window_size
+				))
+			
+			listener_t = threading.Thread(target=self._progress_listener, args=(progress_queue, total_frames, desc))
+			listener_t.start()
+			
+			try:
+				# 开启进程池
+				with ctx.Pool(processes=len(chunk_args)) as pool:
+					pool.starmap(self._chunk_processor, chunk_args)
+			except KeyboardInterrupt:
+				# 【修复 Bug 1】捕获 Ctrl+C，立刻切断所有子进程
+				print(f"\n[{desc}] 检测到手动中断，正在安全终止子进程并清理资源...")
+				pool.terminate()
+				pool.join()
+				raise  # 继续向上抛出异常，让主程序捕获后触发最后的 Utils.CleanupTempFiles()
+			finally:
+				# 【修复 Bug 1】无论正常结束还是强退，必须投递 None，拯救卡死的监听线程！
+				progress_queue.put(None)
+				listener_t.join()
 		
-		# 3. 极速无损合并 (Concat Demuxer)
+		# 合并逻辑 (仅在未发生 KeyboardInterrupt 时执行)
 		print(f"\n[{desc}] 所有切片处理完毕，正在无损合并视频...")
 		concat_list_path = os.path.join(self.temp_dir, f"{base_name}_{desc}_concat_list.txt")
-		Utils.AddTempFile(concat_list_path)  # 同样注册 txt
+		Utils.AddTempFile(concat_list_path)
 		
 		with open(concat_list_path, "w", encoding="utf-8") as f:
 			for chunk_file in temp_chunk_files:
@@ -306,7 +311,6 @@ class Worker:
 		]
 		subprocess.run(concat_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 		
-		# 完美贯彻“自动挡清理”，无需任何 os.remove 硬编码
 		return output_path
 	
 	@staticmethod

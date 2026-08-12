@@ -42,9 +42,12 @@ class Utils:
 	@staticmethod
 	def CleanupTempFiles():
 		for path in Utils._tempfiles:
-			Utils._tempfiles.remove(path)
 			if os.path.exists(path):
 				try:
 					os.remove(path)
 				except Exception as e:
 					print(f"无法删除临时文件 {path}: {e}")
+	
+	self.temp_files.clear()  # 遍历完之后一次性清空
+	
+	
