@@ -236,7 +236,7 @@ class Worker:
 	
 	def _run_in_chunks(self, stage, input_path, output_path, isfinal, wrapper, out_w, out_h, out_fps, base_name,
 	                   desc="处理进度"):
-		chunk_num = self.config.get("chunk_num", 4)
+		chunk_num = self.config.get("chunk_num_upscale", 4)
 		
 		cap = cv2.VideoCapture(input_path)
 		total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -399,7 +399,6 @@ class Worker:
 	
 	def ProcessUpscale(self, input_path, output_dir, isfinal):
 		# 1. 探针：获取视频参数并使用模型自身的倍率计算分辨率
-		import os
 		cap = cv2.VideoCapture(input_path)
 		org_fps = cap.get(cv2.CAP_PROP_FPS)
 		orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -435,7 +434,30 @@ class Worker:
 	def ProcessInterpolate(self, input_path, output_path, isnoupscale):
 		if not isnoupscale:
 			Utils.AddTempFile(input_path)
-		raise NotImplementedError("尚未实现")
+			# 1. 探针：获取视频参数并使用模型自身的倍率计算分辨率
+			cap = cv2.VideoCapture(input_path)
+			org_fps = cap.get(cv2.CAP_PROP_FPS)
+			orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+			orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+			cap.release()
+			
+			out_fps = self.interpolator.GetFPS(org_fps)
+			base_name = os.path.splitext(os.path.basename(input_path))[0]
+			
+			
+			# 3. 将任务丢给公共分块调度引擎
+			self._run_in_chunks(
+				stage=2,
+				input_path=input_path,
+				output_path=output_path,
+				isfinal=True,
+				wrapper=self.interpolator,
+				out_w=orig_w,
+				out_h=orig_h,
+				out_fps=out_fps,
+				base_name=base_name,
+				desc="插帧"
+			)
 	
 	def MergeOtherTracks(self, input_path, output_path):
 		pass
