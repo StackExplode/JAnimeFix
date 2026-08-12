@@ -48,6 +48,6 @@ class Utils:
 				except Exception as e:
 					print(f"无法删除临时文件 {path}: {e}")
 	
-		self.temp_files.clear()  # 遍历完之后一次性清空
+		Utils._tempfiles.clear()  # 遍历完之后一次性清空
 	
 	
